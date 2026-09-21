@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>美股基金估值宝 · QDII 持仓穿透估值</title>
+<meta name="description" content="基于定期报告持仓穿透的 QDII / 海外基金实时估值工作台。数据来自天天基金、腾讯财经、新浪财经。" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314171C'/%3E%3Cpath d='M7 21.5l5.5-6 4.5 3.5L25 10' stroke='%23D89A4E' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='25' cy='10' r='2.6' fill='%23D89A4E'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="./css/base.css" />
+<link rel="stylesheet" href="./css/app.css" />
+</head>
+<body>
+
+<!-- ── 顶栏 ─────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <a class="brand" href="./" aria-label="美股基金估值宝首页">
+    <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="7"/>
+      <path d="M7 21.5l5.5-6 4.5 3.5L25 10" class="brand-line"/>
+      <circle cx="25" cy="10" r="2.6" class="brand-dot"/>
+    </svg>
+    <span class="brand-text">
+      <b>美股基金估值宝</b>
+      <i>QDII 持仓穿透估值</i>
+    </span>
+  </a>
+
+  <div class="search" id="search">
+    <svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4L14 14"/>
+    </svg>
+    <input id="search-input" type="search" autocomplete="off" spellcheck="false"
+           placeholder="输入基金代码或名称，回车添加" aria-label="搜索基金" />
+    <kbd class="search-kbd">/</kbd>
+    <div class="search-results" id="search-results" hidden role="listbox"></div>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="icon-btn" id="btn-refresh" title="立即刷新 (R)" aria-label="刷新">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.6 2.4v3.2h-3.2"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-theme" title="切换主题" aria-label="切换主题">
+      <svg viewBox="0 0 16 16" aria-hidden="true" class="ico-sun"><circle cx="8" cy="8" r="3.1"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3.1 3.1l1.1 1.1M11.8 11.8l1.1 1.1M12.9 3.1l-1.1 1.1M4.2 11.8l-1.1 1.1"/></svg>
+      <svg viewBox="0 0 16 16" aria-hidden="true" class="ico-moon"><path d="M13.2 9.6A5.6 5.6 0 0 1 6.4 2.8a5.6 5.6 0 1 0 6.8 6.8z"/></svg>
+    </button>
+    <button class="icon-btn icon-btn-text" id="btn-about" title="关于与免责声明">?</button>
+  </div>
+</header>
+
+<!-- ── 指数条 ───────────────────────────────────────────────────────── -->
+<div class="ribbon">
+  <div class="ribbon-indices" id="ribbon" aria-label="市场指数"></div>
+  <div class="ribbon-clock" id="clock-box">
+    <div class="ck-row">
+      <span class="ck-time" id="ck-time">--:--:--</span>
+      <span class="ck-zone" id="ck-zone"></span>
+    </div>
+    <div class="ck-note">盘前 / 盘中 / 盘后时间段已同步当前时区</div>
+  </div>
+</div>
+
+<!-- ── 主体 ─────────────────────────────────────────────────────────── -->
+<main class="shell">
+
+  <section class="board" aria-label="自选基金">
+    <div class="board-head">
+      <h1 class="board-title">自选 <span class="count" id="watch-count">0</span></h1>
+      <div class="board-tools">
+        <button class="btn btn-ghost btn-picker" id="btn-picker">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.2l1.75 3.7 3.95.53-2.9 2.77.72 3.98L8 11.28 4.48 13.2l.72-3.98-2.9-2.77 3.95-.53z"/></svg>
+          选基
+        </button>
+        <div class="seg" id="sort-seg" role="group" aria-label="排序">
+          <button data-sort="weight" class="is-on">默认</button>
+          <button data-sort="change">涨幅</button>
+          <button data-sort="coverage">覆盖</button>
+          <button data-sort="name">名称</button>
+        </div>
+        <label class="switch" title="计入汇率变动（QDII 净值以人民币计价）">
+          <input type="checkbox" id="toggle-fx" checked />
+          <span>汇率</span>
+        </label>
+        <label class="select-wrap" title="自动刷新间隔">
+          <select id="interval-select" aria-label="刷新间隔">
+            <option value="0">手动</option>
+            <option value="10">10 秒</option>
+            <option value="30" selected>30 秒</option>
+            <option value="60">1 分钟</option>
+            <option value="300">5 分钟</option>
+          </select>
+        </label>
+        <button class="icon-btn sm" id="btn-export" title="导出 CSV" aria-label="导出 CSV">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v8"/><path d="M5 7.4L8 10.4l3-3"/><path d="M2.6 12.4h10.8"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="grid" id="grid">
+        <!-- 固定列宽：auto 布局下表头与表体的列宽会各自解析，导致整体错位 -->
+        <colgroup>
+          <col class="col-star" />
+          <col class="col-fund" />
+          <col class="col-ret" span="5" />
+          <col class="col-nav" />
+          <col class="col-est" />
+          <col class="col-est" />
+          <col class="col-est" />
+          <col class="col-pnl" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="c-star"></th>
+            <th class="c-fund">基金</th>
+            <th class="c-num c-ret" data-ret="m1">近1月</th>
+            <th class="c-num c-ret" data-ret="m3">近3月</th>
+            <th class="c-num c-ret" data-ret="m6">近6月</th>
+            <th class="c-num c-ret" data-ret="y1">近1年</th>
+            <th class="c-num c-ret" data-ret="y3">近3年</th>
+            <th class="c-num c-nav">最新净值</th>
+            <th class="c-num c-est" data-col="pre">盘前估算<span class="th-sub" data-win="pre">16:00 – 21:30</span></th>
+            <th class="c-num c-est" data-col="open">盘中估算<span class="th-sub" data-win="open">21:30 – 04:00</span></th>
+            <th class="c-num c-est" data-col="after">盘后估算<span class="th-sub" data-win="after">04:00 – 08:00</span></th>
+            <th class="c-num c-pnl">今日预估收益</th>
+          </tr>
+        </thead>
+        <tbody id="grid-body"></tbody>
+      </table>
+      <div class="empty" id="empty">
+        <div class="empty-art" aria-hidden="true">
+          <svg viewBox="0 0 120 64">
+            <path class="ea-grid" d="M0 16h120M0 32h120M0 48h120"/>
+            <path class="ea-line" d="M4 50 L24 38 L44 44 L64 24 L84 30 L104 12 L116 16"/>
+            <circle class="ea-dot" cx="116" cy="16" r="3.4"/>
+          </svg>
+        </div>
+        <h2>还没有自选基金</h2>
+        <p>搜索基金代码或名称添加，例如：</p>
+        <div class="chips" id="empty-chips"></div>
+      </div>
+    </div>
+
+    <footer class="board-foot">
+      <span id="foot-status">—</span>
+      <span class="dot-sep">·</span>
+      <span>估值由持仓穿透自算，仅供参考</span>
+      <span class="foot-sum" id="foot-sum" hidden></span>
+    </footer>
+  </section>
+
+  <aside class="detail" id="detail" aria-label="基金详情" aria-live="polite"></aside>
+</main>
+
+<!-- ── 关于 ─────────────────────────────────────────────────────────── -->
+<div class="modal" id="about" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <button class="modal-x" id="about-close" aria-label="关闭">×</button>
+    <h2 id="about-title">关于美股基金估值宝</h2>
+
+    <p class="lead">天天基金自 2023 年起下线了官方盘中估值接口，本工具改用
+      <b>定期报告持仓穿透</b> 自行推算：取基金最新披露的前十大重仓股，逐一匹配
+      实时行情，再按权重还原成基金净值的估算涨跌。</p>
+
+    <h3>估值口径</h3>
+    <pre class="formula">估算涨跌% = Σ(已交易持仓 wᵢ·pᵢ) × 股票占净比 / (Σw × 100)</pre>
+    <ul class="notes">
+      <li><b>已交易</b>：该标的在基金上次公布净值之后又交易过。尚未开盘的市场贡献为 0，不会高估。</li>
+      <li><b>汇率</b>：QDII 净值以人民币计价，美元 / 港币 / 日元资产按 <code>(1+股价)(1+汇率)−1</code> 折算，可开关。</li>
+      <li><b>覆盖度</b>：已交易重仓权重 ÷ 已知重仓权重，越高说明结果越完整。</li>
+      <li><b>联接基金</b>：直接持股为 0，敞口按「非现金资产」还原。</li>
+      <li><b>覆盖市场</b>：美股、港股、日股、沪 / 深 / 北交所。</li>
+      <li><b>时段显示</b>：盘前 / 盘中 / 盘后按美股时段划分，界面显示的时间段会自动换算到你当前的时区。</li>
+    </ul>
+
+    <h3>数据来源</h3>
+    <ul class="notes">
+      <li>基金档案、净值走势、股票仓位 — 天天基金 <code>pingzhongdata</code></li>
+      <li>前十大重仓股 — 天天基金 <code>FundArchivesDatas</code>（季报口径）</li>
+      <li>美 / 港 / 日 / A 股 / 指数实时行情 — 腾讯财经 <code>qt.gtimg.cn</code></li>
+      <li>行情与汇率备用源 — 新浪财经 <code>hq.sinajs.cn</code>；东方财富 <code>push2delay</code> 兜底</li>
+    </ul>
+
+    <h3>局限</h3>
+    <ul class="notes">
+      <li>持仓来自季报，存在调仓滞后；报告期过旧的基金会明确标注。</li>
+      <li>未覆盖的股票按已交易部分的参与度外推，可能偏离实际。</li>
+      <li>部分联接基金上游未披露穿透持仓，这类基金无法估算，会明确说明。</li>
+      <li>不含衍生品、打新、融券等收益。</li>
+    </ul>
+
+    <p class="disclaimer">本工具仅供学习与研究，所有数据与估算结果<b>不构成任何投资建议</b>。投资有风险，决策需谨慎。</p>
+  </div>
+</div>
+
+<!-- ── 选基 ─────────────────────────────────────────────────────────── -->
+<div class="modal" id="picker" hidden>
+  <div class="modal-card picker-card" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <button class="modal-x" id="picker-close" aria-label="关闭">×</button>
+    <h2 id="picker-title">选基 <span class="picker-count" id="picker-count"></span></h2>
+    <p class="lead">点星标加入或移出自选。每只基金默认只放 A 类，需要 C 类单独点亮即可。</p>
+    <div class="picker-fix" id="picker-fixnote" hidden></div>
+    <div class="picker-bar">
+      <input id="picker-search" type="search" placeholder="筛选基金名称或代码" autocomplete="off" spellcheck="false" />
+      <button class="btn btn-ghost" id="picker-all">全部加入</button>
+      <button class="btn btn-ghost" id="picker-none">恢复默认</button>
+    </div>
+    <div class="picker-list" id="picker-list"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="./config.js"></script>
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

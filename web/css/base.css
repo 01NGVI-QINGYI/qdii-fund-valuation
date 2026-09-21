@@ -1,0 +1,230 @@
+/* ==========================================================================
+   基础层：设计变量、重置、排版原语
+   ==========================================================================
+   配色说明：涨跌色严格遵守中国市场惯例（红涨绿跌），因此品牌色不能落在
+   红绿区间里，避免语义冲突。这里用「铜金 #B87333 / #D89A4E」作为唯一的
+   强调色，只出现在选中、焦点、实时指示这些"仪表"语义上。
+   ========================================================================== */
+
+:root {
+  /* 表面 */
+  --paper:        #F5F4F0;
+  --surface:      #FFFFFF;
+  --surface-2:    #FAF9F6;
+  --surface-3:    #F0EEE8;
+
+  /* 文字 */
+  --ink:          #14171C;
+  --ink-2:        #3B414C;
+  --muted:        #6F7683;
+  --faint:        #A2A8B3;
+
+  /* 线条 */
+  --line:         #E5E3DC;
+  --line-2:       #D6D3CA;
+  --line-strong:  #BEBAB0;
+
+  /* 强调 */
+  --accent:       #B87333;
+  --accent-ink:   #8A5522;
+  --accent-soft:  #F3E7D7;
+  --accent-line:  #E2C9A6;
+
+  /* 涨跌 */
+  --up:           #C0392B;
+  --up-soft:      #FBEBE9;
+  --down:         #0E8A5F;
+  --down-soft:    #E7F5EF;
+  --flat:         #6F7683;
+  --flat-soft:    #EEEDE9;
+
+  /* 状态 */
+  --live:         #C0392B;
+  --warn:         #B7791F;
+  --warn-soft:    #FBF3E2;
+
+  /* 尺寸 */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+
+  --topbar-h: 52px;
+  --ribbon-h: 46px;
+
+  /* 字体 */
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+          "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", "JetBrains Mono", Menlo,
+          Consolas, "PingFang SC", monospace;
+
+  --shadow-pop: 0 8px 28px -10px rgba(20, 23, 28, .22), 0 2px 6px -2px rgba(20, 23, 28, .10);
+  --ease: cubic-bezier(.32, .72, 0, 1);
+}
+
+[data-theme="dark"] {
+  --paper:        #0E1114;
+  --surface:      #15181D;
+  --surface-2:    #1A1E24;
+  --surface-3:    #20252C;
+
+  --ink:          #E8EAED;
+  --ink-2:        #B7BDC7;
+  --muted:        #828A97;
+  --faint:        #5C6470;
+
+  --line:         #23282F;
+  --line-2:       #2E343D;
+  --line-strong:  #3C434E;
+
+  --accent:       #D89A4E;
+  --accent-ink:   #E9B36B;
+  --accent-soft:  #2A2115;
+  --accent-line:  #4A3A20;
+
+  --up:           #F0564B;
+  --up-soft:      #2C1A19;
+  --down:         #2CBE84;
+  --down-soft:    #12241D;
+  --flat:         #828A97;
+  --flat-soft:    #1E2229;
+
+  --live:         #F0564B;
+  --warn:         #D9A441;
+  --warn-soft:    #2A2213;
+
+  --shadow-pop: 0 10px 34px -12px rgba(0, 0, 0, .7), 0 2px 8px -2px rgba(0, 0, 0, .5);
+}
+
+/* ── 重置 ───────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, p, figure { margin: 0; }
+ul { margin: 0; padding: 0; list-style: none; }
+button, input, select { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+table { border-collapse: separate; border-spacing: 0; }
+
+svg { display: block; }
+svg path, svg circle, svg rect, svg line, svg polyline {
+  vector-effect: non-scaling-stroke;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+[hidden] { display: none !important; }
+
+::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* 滚动条 */
+* { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--line-strong); background-clip: content-box; }
+
+/* ── 排版原语 ───────────────────────────────────────────────────────── */
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  letter-spacing: -.01em;
+}
+
+/* 小号全大写标签，用于表头 / 元信息 */
+.tag-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.up   { color: var(--up); }
+.down { color: var(--down); }
+.flat { color: var(--flat); }
+
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+
+/* 涨跌数值的"跳一下"动画 */
+@keyframes flash-up {
+  0%   { background-color: var(--up-soft); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-down {
+  0%   { background-color: var(--down-soft); }
+  100% { background-color: transparent; }
+}
+.flash-up   { animation: flash-up 700ms var(--ease); border-radius: var(--r-xs); }
+.flash-down { animation: flash-down 700ms var(--ease); border-radius: var(--r-xs); }
+
+/* 实时脉冲点 */
+@keyframes pulse-ring {
+  0%   { transform: scale(.55); opacity: .85; }
+  70%  { transform: scale(2.1); opacity: 0; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--live);
+  flex: none;
+}
+.live-dot::after {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  background: var(--live);
+  animation: pulse-ring 2.1s var(--ease) infinite;
+}
+
+/* 图表入场：路径自绘 */
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.draw-in {
+  stroke-dasharray: var(--len, 1000);
+  stroke-dashoffset: var(--len, 1000);
+  animation: draw 900ms var(--ease) forwards;
+}
+
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: fade-rise 260ms var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}

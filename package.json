@@ -1,0 +1,25 @@
+{
+  "name": "qdii-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "美股基金估值宝 — 基于持仓穿透的 QDII / 美股基金实时估值工具",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "selftest": "node test/selftest.mjs",
+    "uitest": "node tools/ui-flow.mjs"
+  },
+  "keywords": [
+    "qdii",
+    "fund",
+    "valuation",
+    "eastmoney",
+    "tencent",
+    "sina"
+  ],
+  "license": "MIT"
+}
