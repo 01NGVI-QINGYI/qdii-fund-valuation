@@ -5,6 +5,8 @@ import { DEFAULT_WATCH } from './catalog.js';
 const KEY_WATCH = 'qdii-desk.watch.v1';
 const KEY_PREFS = 'qdii-desk.prefs.v1';
 const KEY_POSITIONS = 'qdii-desk.positions.v1';
+const KEY_WATCH_SNAPSHOT = 'qdii-desk.watch-snapshot.v1';
+const SNAPSHOT_MAX_AGE = 2 * 3600_000;
 
 const DEFAULT_PREFS = {
   theme: 'light',
@@ -137,6 +139,24 @@ export function inWatch(code) {
 export function resetWatch() {
   saveWatch([]);
   return presetWatch();
+}
+
+/* ── 看板快照 ───────────────────────────────────────────────────────── */
+
+/**
+ * Render 免费实例休眠唤醒时 API 可能需要几十秒。保存最近一次精简看板数据，
+ * 下次启动先显示旧值并明确标为缓存，再由实时请求渐进覆盖。
+ */
+export function loadWatchSnapshot() {
+  const snapshot = read(KEY_WATCH_SNAPSHOT, null);
+  if (!snapshot || !Array.isArray(snapshot.funds) || !Number.isFinite(snapshot.savedAt)) return null;
+  if (Date.now() - snapshot.savedAt > SNAPSHOT_MAX_AGE) return null;
+  return snapshot;
+}
+
+export function saveWatchSnapshot(funds) {
+  const clean = (funds || []).filter((f) => f?.code && f?.estimate);
+  if (clean.length) write(KEY_WATCH_SNAPSHOT, { savedAt: Date.now(), funds: clean });
 }
 
 /* ── 偏好 ───────────────────────────────────────────────────────────── */

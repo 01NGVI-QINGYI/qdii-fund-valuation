@@ -228,8 +228,10 @@ async function refresh({ silent = false, restart = false } = {}) {
 
   state.loading = true;
   el.refresh.classList.add('is-busy');
-  if (!silent || !state.funds.some((f) => f.estimate)) {
-    setText(el.foot, `正在加载估值… 0/${codes.length}`, null);
+  const showingCache = state.funds.some((f) => f._cached && f.estimate);
+  if (!silent || showingCache || !state.funds.some((f) => f.estimate)) {
+    const prefix = showingCache ? '显示上次数据 · ' : '';
+    setText(el.foot, `${prefix}正在加载估值… 0/${codes.length}`, null);
   }
 
   try {
@@ -295,6 +297,7 @@ async function refresh({ silent = false, restart = false } = {}) {
     state.funds = watch.map((w) => loaded.get(w.code) || { code: w.code, name: w.name || w.code });
     state.error = data.errors?.length ? data.errors : null;
     state.lastUpdated = Date.now();
+    store.saveWatchSnapshot(state.funds);
     paintBoard();
 
     // 详情同步刷新
@@ -392,7 +395,11 @@ function syncWatchList() {
   }
   // 基金名称与代码无需等待网络：先把完整名单画出来，再渐进填充数据。
   const previous = new Map(state.funds.map((f) => [f.code, f]));
-  state.funds = watch.map((w) => previous.get(w.code) || { code: w.code, name: w.name || w.code });
+  const snapshot = store.loadWatchSnapshot();
+  const cached = new Map((snapshot?.funds || []).map((f) => [f.code, { ...f, _cached: true }]));
+  state.funds = watch.map((w) => previous.get(w.code)
+    || cached.get(w.code)
+    || { code: w.code, name: w.name || w.code });
   paintBoard();
   refresh({ silent: true, restart: true });
 }
