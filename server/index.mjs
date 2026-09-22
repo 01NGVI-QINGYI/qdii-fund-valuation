@@ -70,6 +70,22 @@ function parseCodes(raw) {
     .slice(0, 60);
 }
 
+/**
+ * 看板只需要摘要字段。完整持仓和净值历史由详情接口按需返回；如果在
+ * /api/watch 里把它们给每只基金都带上，默认 25 只会产生约 3 MB JSON，
+ * 白白增加传输、解析和 GC 时间。
+ */
+function toWatchFund(fund) {
+  const {
+    code, name, nav, estimate, period, reportDate, reportAgeDays, reportStale,
+    returns, updatedAt, topCount, intraday,
+  } = fund;
+  return {
+    code, name, nav, estimate, period, reportDate, reportAgeDays, reportStale,
+    returns, updatedAt, topCount, intraday,
+  };
+}
+
 const bool = (v, dflt = true) => (v === undefined || v === '' ? dflt : v !== '0' && v !== 'false');
 
 /* ------------------------------------------------------------------ */
@@ -133,7 +149,7 @@ async function handleApi(req, res, url) {
       includeFx: bool(searchParams.get('fx')),
       sample: true,
     });
-    return sendJson(res, 200, data);
+    return sendJson(res, 200, { ...data, funds: data.funds.map(toWatchFund) });
   }
 
   const detail = /^\/api\/fund\/([^/]+)$/.exec(pathname);

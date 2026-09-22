@@ -138,7 +138,11 @@ const seededRows = Number(await evaluate(`
   (async () => {
     for (let i = 0; i < 200; i++) {
       const n = document.querySelectorAll('#grid-body tr[data-code]').length;
-      if (n > 0 && !document.querySelector('#grid-body .skeleton-row')) return n;
+      // 基金名单现在会立即渲染，指数与市场阶段仍是异步请求；这里等阶段
+      // 元数据就绪后再做功能断言，首屏速度由独立的冷启动检查覆盖。
+      if (n > 0
+          && !document.querySelector('#grid-body .skeleton-row')
+          && document.querySelector('#grid thead th.c-est.is-live')) return n;
       await new Promise(r => setTimeout(r, 500));
     }
     return 0;

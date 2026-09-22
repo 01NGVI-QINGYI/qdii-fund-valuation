@@ -3,7 +3,7 @@
 import { $, toast, setText, h, clear } from './dom.js';
 import { api } from './api.js';
 import * as store from './store.js';
-import { renderBoard, renderSkeleton, clearBoard } from './views/board.js';
+import { renderBoard, clearBoard } from './views/board.js';
 import { renderDetail, renderPlaceholder, openDrawer, closeDrawer } from './views/detail.js';
 import { renderRibbon, startClock, beijingMinutesToLocal } from './views/ribbon.js';
 import { createSearch } from './views/search.js';
@@ -17,6 +17,10 @@ const SUGGESTIONS = [
   { code: '000834', name: '大成纳斯达克100ETF联接' },
   { code: '161725', name: '招商中证白酒指数A' },
 ];
+
+// 冷启动时 25 只基金需要约 50 个上游请求。分成小批后，首批通常 3 秒左右
+// 即可显示，余下数据继续渐进填充，不再让最慢的一只阻塞整张表。
+const WATCH_BATCH_SIZE = 5;
 
 const state = {
   funds: [],
@@ -43,6 +47,7 @@ const el = {
 
 /** 选基面板实例（init 里创建，供星标回调刷新）。 */
 let picker = null;
+let refreshRun = 0;
 
 /* ── 主题 ───────────────────────────────────────────────────────────── */
 
@@ -215,26 +220,60 @@ async function loadOverview() {
   }
 }
 
-async function refresh({ silent = false } = {}) {
-  if (state.loading) return;
+async function refresh({ silent = false, restart = false } = {}) {
+  if (state.loading && !restart) return;
+  const run = ++refreshRun;
   const watch = store.loadWatch();
   const codes = watch.map((w) => w.code);
 
   state.loading = true;
   el.refresh.classList.add('is-busy');
-  if (!silent) setText(el.foot, '正在获取行情…', null);
+  if (!silent || !state.funds.some((f) => f.estimate)) {
+    setText(el.foot, `正在加载估值… 0/${codes.length}`, null);
+  }
 
   try {
     const prefs = store.getPrefs();
-    const [overview, data] = await Promise.all([
-      loadOverview(),
-      codes.length
-        ? api.watch(codes, { top: prefs.top, fx: prefs.fx })
-        : Promise.resolve({ funds: [], errors: [], markets: null }),
-    ]);
+    const overviewPromise = loadOverview();
+    const batches = [];
+    for (let i = 0; i < codes.length; i += WATCH_BATCH_SIZE) {
+      batches.push(codes.slice(i, i + WATCH_BATCH_SIZE));
+    }
 
+    const loaded = new Map(
+      state.funds
+        .filter((f) => f?.code && f.estimate)
+        .map((f) => [f.code, f]),
+    );
+    const errors = [];
+    let loadedCount = 0;
+
+    for (const batch of batches) {
+      let data;
+      try {
+        data = await api.watch(batch, { top: prefs.top, fx: prefs.fx });
+      } catch (err) {
+        data = {
+          funds: [],
+          errors: batch.map((code) => ({ code, message: err?.message || '加载失败' })),
+          markets: null,
+        };
+      }
+      if (run !== refreshRun) return;
+      for (const fund of data.funds || []) loaded.set(fund.code, fund);
+      errors.push(...(data.errors || []));
+      if (data.markets) state.markets = data.markets;
+      loadedCount += batch.length;
+
+      // 始终按自选顺序合并；尚未完成的基金保留启动时的名称占位行。
+      state.funds = watch.map((w) => loaded.get(w.code) || { code: w.code, name: w.name || w.code });
+      paintBoard();
+      setText(el.foot, `正在加载估值… ${Math.min(loadedCount, codes.length)}/${codes.length}`, null);
+    }
+
+    const overview = await overviewPromise;
+    const data = { funds: [...loaded.values()], errors, markets: state.markets };
     if (overview?.markets) state.markets = overview.markets;
-    if (data.markets) state.markets = data.markets;
 
     // 名称回填：自选里存的名字为空时用接口结果补上。
     // 处于"预设回落"状态时不写盘——那时列表本来就没被收藏，
@@ -253,7 +292,7 @@ async function refresh({ silent = false } = {}) {
       if (changed) store.saveWatch(nextWatch);
     }
 
-    state.funds = data.funds;
+    state.funds = watch.map((w) => loaded.get(w.code) || { code: w.code, name: w.name || w.code });
     state.error = data.errors?.length ? data.errors : null;
     state.lastUpdated = Date.now();
     paintBoard();
@@ -271,8 +310,10 @@ async function refresh({ silent = false } = {}) {
     setText(el.foot, `获取失败：${err.message}`, null);
     if (!silent) toast(`获取失败：${err.message}`);
   } finally {
-    state.loading = false;
-    el.refresh.classList.remove('is-busy');
+    if (run === refreshRun) {
+      state.loading = false;
+      el.refresh.classList.remove('is-busy');
+    }
   }
 }
 
@@ -349,9 +390,11 @@ function syncWatchList() {
     loadOverview();
     return;
   }
-  // 新增的基金先占位，避免表格高度突变
-  renderSkeleton(el.gridBody, Math.max(watch.length, 1));
-  refresh({ silent: true });
+  // 基金名称与代码无需等待网络：先把完整名单画出来，再渐进填充数据。
+  const previous = new Map(state.funds.map((f) => [f.code, f]));
+  state.funds = watch.map((w) => previous.get(w.code) || { code: w.code, name: w.name || w.code });
+  paintBoard();
+  refresh({ silent: true, restart: true });
 }
 
 /* ── 定时刷新 ───────────────────────────────────────────────────────── */
