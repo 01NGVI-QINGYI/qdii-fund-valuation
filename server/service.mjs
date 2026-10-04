@@ -73,19 +73,21 @@ export async function getValuations(codes, opts = {}) {
   const unique = [...new Set(codes.map((c) => String(c).trim()).filter(Boolean))];
   if (!unique.length) return { funds: [], markets: marketOverview().markets, fx: null, errors: [] };
 
-  const fx = await resolveFx().catch(() => null);
-
-  const inputs = await mapSettled(
-    unique,
-    async (code) => {
-      try {
-        return { code, ...(await loadFundInputs(code, topline)) };
-      } catch (err) {
-        return { code, error: err?.message || '加载失败' };
-      }
-    },
-    FUND_CONCURRENCY,
-  );
+  // 汇率与基金档案彼此独立。并行加载可避免汇率源的网络延迟挡住基金数据。
+  const [fx, inputs] = await Promise.all([
+    resolveFx().catch(() => null),
+    mapSettled(
+      unique,
+      async (code) => {
+        try {
+          return { code, ...(await loadFundInputs(code, topline)) };
+        } catch (err) {
+          return { code, error: err?.message || '加载失败' };
+        }
+      },
+      FUND_CONCURRENCY,
+    ),
+  ]);
 
   // 合并所有标的，一次批量取行情
   const targets = [];

@@ -18,9 +18,9 @@ const SUGGESTIONS = [
   { code: '161725', name: '招商中证白酒指数A' },
 ];
 
-// 冷启动时 25 只基金需要约 50 个上游请求。分成小批后，首批通常 3 秒左右
-// 即可显示，余下数据继续渐进填充，不再让最慢的一只阻塞整张表。
-const WATCH_BATCH_SIZE = 5;
+// 首批保持较小，尽快呈现第一批估值；后续扩大批次以减少 API 往返和重复行情请求。
+const FIRST_WATCH_BATCH_SIZE = 5;
+const NEXT_WATCH_BATCH_SIZE = 10;
 
 const state = {
   funds: [],
@@ -237,9 +237,9 @@ async function refresh({ silent = false, restart = false } = {}) {
   try {
     const prefs = store.getPrefs();
     const overviewPromise = loadOverview();
-    const batches = [];
-    for (let i = 0; i < codes.length; i += WATCH_BATCH_SIZE) {
-      batches.push(codes.slice(i, i + WATCH_BATCH_SIZE));
+    const batches = codes.length ? [codes.slice(0, FIRST_WATCH_BATCH_SIZE)] : [];
+    for (let i = FIRST_WATCH_BATCH_SIZE; i < codes.length; i += NEXT_WATCH_BATCH_SIZE) {
+      batches.push(codes.slice(i, i + NEXT_WATCH_BATCH_SIZE));
     }
 
     const loaded = new Map(

@@ -268,10 +268,7 @@ export async function fetchHoldings(code, topline = 10) {
   const top = Math.min(Math.max(Number(topline) || 10, 5), 50);
   const key = `em:holdings:${code}:${top}`;
 
-  const hit = cache.get(key);
-  if (hit !== undefined) return hit;
-
-  const result = await (async () => {
+  return cache.wrap(key, (result) => result?.available ? 6 * 3600_000 : 60_000, async () => {
     const url =
       'https://fundf10.eastmoney.com/FundArchivesDatas.aspx' +
       `?type=jjcc&code=${code}&topline=${top}&year=&month=&rt=${Math.random()}`;
@@ -321,12 +318,7 @@ export async function fetchHoldings(code, topline = 10) {
       holdings,
       source: 'eastmoney/FundArchivesDatas',
     };
-  })();
-
-  // 只有真正拿到数据才长缓存。上游偶发失败导致的空结果只留 60 秒，
-  // 否则一次抖动会让这只基金在 6 小时内一直显示"无持仓"。
-  cache.set(key, result, result.available ? 6 * 3600_000 : 60_000);
-  return result;
+  });
 }
 
 /**

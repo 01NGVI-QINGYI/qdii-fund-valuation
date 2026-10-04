@@ -1,5 +1,5 @@
 /**
- * 带 TTL 的缓存 + 同键请求合并。
+ * 带 TTL 的缓存 + 同键请求合并。TTL 可固定，也可根据返回值计算。
  *
  * 这个应用是"轮询型"的：多个浏览器标签页会同时打同一批接口。
  * 没有合并的话，10 个标签页 × 12 只基金 = 上游几百次请求，
@@ -44,7 +44,7 @@ export class TtlCache {
    * 读缓存；未命中则调用 producer 并写入。并发同 key 只触发一次 producer。
    * @template T
    * @param {string} key
-   * @param {number} ttlMs
+   * @param {number | ((value: T) => number)} ttlMs
    * @param {() => Promise<T>} producer
    * @returns {Promise<T>}
    */
@@ -65,7 +65,8 @@ export class TtlCache {
     const p = (async () => {
       try {
         const value = await producer();
-        this.set(key, value, ttlMs);
+        const ttl = typeof ttlMs === 'function' ? ttlMs(value) : ttlMs;
+        this.set(key, value, ttl);
         return value;
       } finally {
         this.inflight.delete(key);
