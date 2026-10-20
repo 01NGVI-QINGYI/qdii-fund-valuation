@@ -19,7 +19,7 @@ const SUGGESTIONS = [
 ];
 
 // 首批保持较小，尽快呈现第一批估值；后续扩大批次以减少 API 往返和重复行情请求。
-const FIRST_WATCH_BATCH_SIZE = 5;
+const FIRST_WATCH_BATCH_SIZE = 1;
 const NEXT_WATCH_BATCH_SIZE = 10;
 
 const state = {

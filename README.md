@@ -3,7 +3,7 @@
 一个面向 QDII / 海外基金的持仓穿透估值网站。项目根据基金最新披露的重仓股、实时行情与汇率，自行估算盘前、盘中和盘后净值变化。
 
 - 在线网站：https://01ngvi-qingyi.github.io/qdii-fund-valuation/
-- API 状态：https://qdii-fund-valuation.onrender.com/api/health
+- API 状态：https://qdii-fund-valuation-api.qdii-desk.workers.dev/api/health
 
 ## 功能
 
@@ -17,9 +17,10 @@
 ## 技术架构
 
 - 前端：原生 HTML、CSS、JavaScript，由 GitHub Pages 托管
-- 后端：Node.js 20+，由 Render 托管
+- 后端：Cloudflare Workers，按免费计划运行
+- 持久化：Cloudflare D1 保存盘中采样曲线
 - 数据：天天基金、腾讯财经、新浪财经与东方财富备用行情
-- 部署：推送 `main` 后由 GitHub Actions 自动更新 Pages，Render 自动更新 API
+- 部署：GitHub Actions 自动更新 Pages；Worker 使用 Wrangler 部署
 
 ## 本地运行
 
@@ -30,6 +31,15 @@ npm start
 ```
 
 打开 http://127.0.0.1:5178 。项目无第三方运行时依赖。
+
+本地预览 Cloudflare Worker：
+
+```bash
+npm run cf:d1:migrate:local
+npm run cf:dev
+```
+
+首次部署 Worker 需要登录 Cloudflare、创建 D1 数据库并将数据库 ID 写入 `wrangler.jsonc`。以后可用 `npm run cf:deploy` 更新 Worker，数据库结构变更用 `npm run cf:d1:migrate:remote` 应用。
 
 ```bash
 npm run selftest  # 数据源自检

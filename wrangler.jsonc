@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "qdii-fund-valuation-api",
+  "main": "worker/index.mjs",
+  "compatibility_date": "2026-10-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "ALLOWED_ORIGIN": "https://01ngvi-qingyi.github.io"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "qdii-fund-valuation-data",
+      "database_id": "ac35b26f-0d61-401f-ad2d-997520d50d26",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

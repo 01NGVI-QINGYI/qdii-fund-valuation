@@ -9,7 +9,7 @@
  * 前端会明确标注采样区间，不做插值伪装。
  */
 
-import { readJson, writeJson } from './lib/store.mjs';
+import { readJson, writeJson, usesImmediateJsonStore } from './lib/store.mjs';
 import { todayCn } from './lib/time.mjs';
 
 const SAMPLE_INTERVAL_MS = 60_000;
@@ -83,7 +83,12 @@ export async function recordSample(code, pct, nav) {
   data.points.push({ t: now, pct: Number(pct.toFixed(4)), nav: Number.isFinite(nav) ? Number(nav.toFixed(4)) : null });
   if (data.points.length > MAX_POINTS) data.points.splice(0, data.points.length - MAX_POINTS);
   memo.set(code, data);
-  scheduleFlush(code);
+  if (usesImmediateJsonStore()) {
+    // Worker 请求结束后不保证普通 setTimeout 继续运行；D1 写入须纳入当前请求。
+    await writeJson(`intraday/${code}.json`, data).catch(() => {});
+  } else {
+    scheduleFlush(code);
+  }
 }
 
 /** 读取今日采样序列。 */

@@ -55,9 +55,9 @@ export async function searchFunds(keyword) {
 }
 
 /** 单只基金的完整档案（带缓存）。 */
-async function loadFundInputs(code, topline) {
+async function loadFundInputs(code, topline, includeHistory) {
   const [profile, holdings] = await Promise.all([
-    fetchFundProfile(code),
+    fetchFundProfile(code, { includeHistory }),
     fetchHoldings(code, topline),
   ]);
   return { profile, holdings };
@@ -66,28 +66,46 @@ async function loadFundInputs(code, topline) {
 /**
  * 批量估值。
  * @param {string[]} codes
- * @param {{topline?:number, includeFx?:boolean, sample?:boolean}} opts
+ * @param {{topline?:number, includeFx?:boolean, sample?:boolean, includeHistory?:boolean, fundConcurrency?:number, fxFirst?:boolean}} opts
  */
 export async function getValuations(codes, opts = {}) {
-  const { topline = DEFAULT_TOP_COUNT, includeFx = true, sample = true } = opts;
+  const {
+    topline = DEFAULT_TOP_COUNT,
+    includeFx = true,
+    sample = true,
+    includeHistory = false,
+    fundConcurrency = FUND_CONCURRENCY,
+    fxFirst = false,
+  } = opts;
   const unique = [...new Set(codes.map((c) => String(c).trim()).filter(Boolean))];
   if (!unique.length) return { funds: [], markets: marketOverview().markets, fx: null, errors: [] };
 
   // 汇率与基金档案彼此独立。并行加载可避免汇率源的网络延迟挡住基金数据。
-  const [fx, inputs] = await Promise.all([
-    resolveFx().catch(() => null),
-    mapSettled(
+  const loadInputs = () => mapSettled(
       unique,
       async (code) => {
         try {
-          return { code, ...(await loadFundInputs(code, topline)) };
+          return { code, ...(await loadFundInputs(code, topline, includeHistory)) };
         } catch (err) {
           return { code, error: err?.message || '加载失败' };
         }
       },
-      FUND_CONCURRENCY,
-    ),
-  ]);
+      Math.max(1, Math.min(FUND_CONCURRENCY, Number(fundConcurrency) || FUND_CONCURRENCY)),
+    );
+
+  let fx;
+  let inputs;
+  if (fxFirst) {
+    // Workers 每个请求最多 6 个并发外连：先取汇率，再让 3 只基金各并发取
+    // 档案与持仓（6 个连接），避免和汇率请求重叠触发平台上限。
+    fx = await resolveFx().catch(() => null);
+    inputs = await loadInputs();
+  } else {
+    [fx, inputs] = await Promise.all([
+      resolveFx().catch(() => null),
+      loadInputs(),
+    ]);
+  }
 
   // 合并所有标的，一次批量取行情
   const targets = [];
@@ -135,8 +153,21 @@ export async function getValuations(codes, opts = {}) {
 
 /** 单只基金（含历史曲线与盘中采样）。 */
 export async function getFundDetail(code, opts = {}) {
-  const { topline = DEFAULT_TOP_COUNT, includeFx = true, sample = true } = opts;
-  const result = await getValuations([code], { topline, includeFx, sample });
+  const {
+    topline = DEFAULT_TOP_COUNT,
+    includeFx = true,
+    sample = true,
+    fundConcurrency,
+    fxFirst,
+  } = opts;
+  const result = await getValuations([code], {
+    topline,
+    includeFx,
+    sample,
+    fundConcurrency,
+    fxFirst,
+    includeHistory: true,
+  });
   const fund = result.funds[0] || null;
   if (!fund) {
     return { fund: null, error: result.errors[0]?.message || '未找到该基金', markets: result.markets, fx: result.fx };

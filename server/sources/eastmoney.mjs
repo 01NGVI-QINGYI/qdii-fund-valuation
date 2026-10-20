@@ -121,38 +121,50 @@ function parseJsonVar(raw, fallback = null) {
 
 /** 时间戳 -> 北京时间的 YYYY-MM-DD。 */
 function tsToCnDate(ts) {
-  const d = new Date(Number(ts));
-  const p = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-  return p;
+  // 上海全年固定 UTC+8；用 UTC 字符串切片，避免对每条历史净值都创建
+  // Intl.DateTimeFormat。Worker 免费档 CPU 预算较紧，这里可显著减少冷请求开销。
+  return new Date(Number(ts) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 /**
  * 拉取基金档案。
  * @param {string} code
  */
-export async function fetchFundProfile(code) {
+export async function fetchFundProfile(code, { includeHistory = false } = {}) {
   const url = `https://fund.eastmoney.com/pingzhongdata/${code}.js?v=${Date.now()}`;
-  return cache.wrap(`em:profile:${code}`, 6 * 3600_000, async () => {
+  const raw = await cache.wrap(`em:profile:source:${code}`, 6 * 3600_000, async () => {
     const { text } = await fetchText(url, { referer: REFERER, timeout: 15000 });
-    const v = extractVars(text);
+    return text;
+  });
+
+  return cache.wrap(`em:profile:${code}:${includeHistory ? 'full' : 'summary'}`, 6 * 3600_000, async () => {
+    const v = extractVars(raw);
 
     const name = (v.fS_name || '').replace(/^"|"$/g, '') || null;
     if (!name) throw new Error(`未找到基金 ${code} 的档案`);
 
     const trend = parseJsonVar(v.Data_netWorthTrend, []);
-    const navHistory = trend
-      .filter((p) => Number.isFinite(p?.y))
-      .map((p) => ({
-        date: tsToCnDate(p.x),
-        nav: Number(p.y),
-        changePct: Number.isFinite(p.equityReturn) ? Number(p.equityReturn) : null,
-        dividend: p.unitMoney || '',
-      }));
+    const validTrend = trend.filter((p) => Number.isFinite(p?.y) && Number.isFinite(Number(p?.x)));
+    const navHistory = includeHistory
+      ? validTrend.map((p) => ({
+          date: tsToCnDate(p.x),
+          nav: Number(p.y),
+          changePct: Number.isFinite(p.equityReturn) ? Number(p.equityReturn) : null,
+          dividend: p.unitMoney || '',
+        }))
+      : [];
+    const latest = validTrend.at(-1);
+    const latestNav = latest
+      ? {
+          date: tsToCnDate(latest.x),
+          nav: Number(latest.y),
+          changePct: Number.isFinite(latest.equityReturn) ? Number(latest.equityReturn) : null,
+          dividend: latest.unitMoney || '',
+        }
+      : null;
+    const returns = includeHistory
+      ? trailingReturns(navHistory)
+      : trailingReturnsFromTrend(validTrend, latestNav);
 
     const alloc = parseJsonVar(v.Data_assetAllocation, null);
     let equityPct = null;
@@ -186,8 +198,8 @@ export async function fetchFundProfile(code) {
       code: String(code),
       name,
       navHistory,
-      returns: trailingReturns(navHistory),
-      latestNav: navHistory.at(-1) || null,
+      returns,
+      latestNav,
       equityPct,
       assetAllocation,
       positionEstimate,
@@ -512,4 +524,36 @@ function trailingReturns(navHistory) {
 
   const out = { m1: pick(1), m3: pick(3), m6: pick(6), y1: pick(12), y3: pick(36) };
   return Object.values(out).some((v) => v !== null) ? out : null;
+}
+
+/** 摘要模式直接在原始时间戳上找收益基准，避免为每个历史点格式化日期。 */
+function trailingReturnsFromTrend(trend, latest) {
+  if (!latest || trend.length < 2) return null;
+  const last = trend.at(-1);
+
+  const pick = (months) => {
+    const targetDate = new Date(`${latest.date}T00:00:00Z`);
+    targetDate.setUTCMonth(targetDate.getUTCMonth() - months);
+    const target = targetDate.toISOString().slice(0, 10);
+    const targetTs = Date.parse(`${target}T00:00:00+08:00`);
+
+    let lo = 0;
+    let hi = trend.length - 1;
+    let idx = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (Number(trend[mid].x) <= targetTs) { idx = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    if (idx < 0) return null;
+
+    const baseDate = tsToCnDate(trend[idx].x);
+    const gapDays = (Date.parse(`${target}T00:00:00Z`) - Date.parse(`${baseDate}T00:00:00Z`)) / 86400000;
+    if (gapDays > 20) return null;
+    const base = Number(trend[idx].y);
+    if (!base) return null;
+    return (Number(last.y) / base - 1) * 100;
+  };
+
+  const out = { m1: pick(1), m3: pick(3), m6: pick(6), y1: pick(12), y3: pick(36) };
+  return Object.values(out).some((value) => value !== null) ? out : null;
 }

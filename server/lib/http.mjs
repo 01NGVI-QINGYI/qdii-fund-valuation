@@ -55,7 +55,7 @@ export async function fetchText(url, opts = {}) {
         signal: AbortSignal.timeout(timeout),
       });
 
-      const buf = Buffer.from(await res.arrayBuffer());
+      const buf = new Uint8Array(await res.arrayBuffer());
 
       if (!res.ok) {
         // 部分接口用 4xx 返回一段说明性 HTML，交给调用方判断更合适，
@@ -68,10 +68,9 @@ export async function fetchText(url, opts = {}) {
         throw new HttpError(`HTTP ${res.status}`, { status: res.status, url });
       }
 
-      const text =
-        encoding === 'gbk' || encoding === 'gb2312'
-          ? new TextDecoder('gbk').decode(buf)
-          : buf.toString('utf8');
+      const text = new TextDecoder(
+        encoding === 'gbk' || encoding === 'gb2312' ? 'gbk' : 'utf-8',
+      ).decode(buf);
       return { text, status: res.status, url };
     } catch (err) {
       lastErr = err;
