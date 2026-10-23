@@ -27,9 +27,7 @@ jobs:
       - name: Prepare static site
         env:
           API_BASE: ${{ vars.QDII_API_BASE }}
-        run: |
-          cp -R web _site
-          node -e "require('fs').writeFileSync('_site/config.js', 'window.QDII_API_BASE = ' + JSON.stringify(process.env.API_BASE || '') + ';\\n')"
+        run: node tools/build-site.mjs
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

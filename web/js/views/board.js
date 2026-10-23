@@ -3,6 +3,7 @@
 import { h, s, clear, setText, setClass } from '../dom.js';
 import * as fmt from '../format.js';
 import { loadPositions, derivePosition, inWatch, addToWatch, removeFromWatch } from '../store.js';
+import { cancelMotion, playMotion, reveal, prefersReducedMotion } from '../motion.js';
 
 /** code -> 行节点与其中的可变引用 */
 const rowIndex = new Map();
@@ -108,7 +109,14 @@ function updateEstCell(cell, active, e) {
 }
 
 function buildRow(fund, handlers) {
-  const tr = h('tr', { dataset: { code: fund.code } });
+  const tr = h('tr', {
+    dataset: { code: fund.code }, tabindex: '0',
+    onkeydown: (event) => {
+      if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) {
+        event.preventDefault(); event.stopPropagation(); handlers.onSelect(fund.code);
+      }
+    },
+  });
 
   /* 星标：已自选时为实心，点击移除 */
   const star = h('button', {
@@ -170,6 +178,15 @@ function buildRow(fund, handlers) {
 function updateRow(row, fund, handlers) {
   const { refs } = row;
   const e = fund.estimate;
+  const loading = handlers.loadingCodes?.has(fund.code) && !fund.nav;
+  setClass(row.tr, 'is-loading', !!loading);
+  row.tr.setAttribute('aria-busy', String(!!loading));
+  if (row.wasLoading && !loading) {
+    for (const cell of row.tr.querySelectorAll('.c-num')) {
+      playMotion(cell, [{ opacity: .25 }, { opacity: 1 }], { duration: 240 });
+    }
+  }
+  row.wasLoading = !!loading;
 
   /* 星标 */
   const starred = inWatch(fund.code);
@@ -243,6 +260,14 @@ function updateRow(row, fund, handlers) {
  */
 export function renderBoard(tbody, funds, handlers) {
   const seen = new Set();
+  const before = new Map();
+  if (handlers.animateOrder && !prefersReducedMotion()) {
+    for (const [code, row] of rowIndex) {
+      before.set(code, row.tr.getBoundingClientRect().top);
+      cancelMotion(row.tr);
+    }
+  }
+  const added = [];
 
   // 清掉骨架屏等非数据行（骨架行不在 rowIndex 里，增量更新管不到它们）
   for (const child of [...tbody.children]) {
@@ -258,6 +283,7 @@ export function renderBoard(tbody, funds, handlers) {
     if (!row) {
       row = buildRow(fund, handlers);
       rowIndex.set(fund.code, row);
+      added.push(row.tr);
     }
     updateRow(row, fund, handlers);
     const currentAt = tbody.children[i];
@@ -271,6 +297,16 @@ export function renderBoard(tbody, funds, handlers) {
       rowIndex.delete(code);
     }
   }
+  for (const [code, top] of before) {
+    const row = rowIndex.get(code);
+    if (!row) continue;
+    const offset = top - row.tr.getBoundingClientRect().top;
+    if (Math.abs(offset) > 1) playMotion(row.tr, [
+      { transform: `translateY(${offset}px)` },
+      { transform: 'translateY(0)' },
+    ], { duration: 280 });
+  }
+  added.forEach((row, index) => reveal(row, { duration: 240, delay: Math.min(index * 14, 100), fill: 'backwards' }));
 }
 
 export function clearBoard(tbody) {

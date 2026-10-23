@@ -95,6 +95,12 @@
         </button>
       </div>
     </div>
+    <div class="load-status" id="load-status" role="status" aria-live="polite" aria-atomic="true">
+      <span class="load-orbit" aria-hidden="true"></span>
+      <span id="load-label">正在加载估值</span>
+      <span class="load-count num" id="load-count"></span>
+      <span class="load-track" id="load-progress" role="progressbar" aria-label="基金估值加载进度" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><i></i></span>
+    </div>
     <div class="table-wrap">
       <table class="grid" id="grid">
         <!-- 固定列宽：auto 布局下表头与表体的列宽会各自解析，导致整体错位 -->

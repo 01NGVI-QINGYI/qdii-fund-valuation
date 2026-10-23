@@ -14,7 +14,10 @@ export function createSearch({ onAdd }) {
   let timer = null;
 
   function close() {
+    ++seq;
+    clearTimeout(timer);
     panel.hidden = true;
+    panel.setAttribute('aria-busy', 'false');
     cursor = -1;
     // 一并清空：否则隐藏的结果项还在 DOM 里，
     // 下一次搜索前的误点会命中上一轮的旧条目
@@ -24,6 +27,7 @@ export function createSearch({ onAdd }) {
 
   function render() {
     clear(panel);
+    panel.setAttribute('aria-busy', 'false');
     if (!results.length) {
       panel.appendChild(h('div', { class: 'sr-empty' }, '没有匹配的基金'));
       panel.hidden = false;
@@ -60,8 +64,7 @@ export function createSearch({ onAdd }) {
     onAdd(res.added ? `已添加 ${r.name || r.code}` : '该基金已在自选中');
   }
 
-  async function run(q) {
-    const my = ++seq;
+  async function run(q, my) {
     try {
       const data = await api.search(q);
       if (my !== seq) return;
@@ -79,7 +82,16 @@ export function createSearch({ onAdd }) {
     const q = input.value.trim();
     clearTimeout(timer);
     if (!q) return close();
-    timer = setTimeout(() => run(q), 200);
+    const my = ++seq;
+    results = [];
+    cursor = -1;
+    clear(panel);
+    panel.appendChild(h('div', { class: 'sr-empty sr-loading', role: 'status' }, [
+      h('span', { class: 'load-orbit', 'aria-hidden': 'true' }), '正在搜索基金…',
+    ]));
+    panel.hidden = false;
+    panel.setAttribute('aria-busy', 'true');
+    timer = setTimeout(() => run(q, my), 200);
   });
 
   input.addEventListener('keydown', (ev) => {

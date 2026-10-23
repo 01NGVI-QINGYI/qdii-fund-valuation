@@ -356,8 +356,9 @@
   line-height: 1.35;
 }
 .fund-sub { display: flex; align-items: center; gap: 7px; }
+.fname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fund-code { font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
-.fund-flags { display: flex; gap: 4px; }
+.fund-flags { display: flex; flex: none; gap: 4px; }
 
 .flag {
   font-size: 9.5px; font-weight: 600; letter-spacing: .03em;
@@ -966,3 +967,151 @@
   color: color-mix(in srgb, var(--warn) 80%, var(--ink));
 }
 .picker-fix b { font-weight: 700; }
+
+/* ── 等待反馈与交互连续性 ────────────────────────────────────────── */
+
+.load-status {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 0 4px 7px;
+  color: var(--muted);
+  font-size: 10.5px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition: opacity var(--motion-state) var(--ease),
+    transform var(--motion-state) var(--ease), visibility 0s var(--motion-state);
+}
+.load-status.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+.load-count { margin-left: auto; color: var(--accent-ink); font-size: 10px; }
+.load-orbit {
+  display: inline-block;
+  flex: none;
+  width: 11px; height: 11px;
+  border: 1.5px solid var(--accent-line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+.load-status:not(.is-active) .load-orbit { animation-play-state: paused; }
+.load-status.is-complete .load-orbit {
+  animation: none;
+  border: 0;
+  width: 11px; height: 6px;
+  border-left: 1.5px solid var(--accent);
+  border-bottom: 1.5px solid var(--accent);
+  border-radius: 0;
+  transform: translateY(-2px) rotate(-45deg);
+}
+.load-track {
+  position: absolute;
+  bottom: 1px; left: 0; right: 0;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--surface-3);
+}
+.load-track i {
+  display: block; width: 100%; height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transform: scaleX(var(--load-progress, 0));
+  transition: transform var(--motion-panel) var(--ease);
+}
+
+/* 名称先显示，只对仍在等待的数值单元格显示骨架。 */
+.grid tr.is-loading td.c-num { position: relative; }
+.grid tr.is-loading td.c-num > * { visibility: hidden; }
+.grid tr.is-loading td.c-num::after {
+  content: '';
+  position: absolute;
+  right: 10px; top: calc(50% - 4px);
+  width: 58%; height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(100deg, var(--surface-3) 25%, var(--line) 45%, var(--surface-3) 65%);
+  background-size: 240% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+.grid tr.is-loading .fund-code { color: var(--muted); }
+.grid tbody tr { transform-origin: center; }
+.grid tbody tr:focus-visible { outline-offset: -2px; }
+
+.seg-motion { position: relative; isolation: isolate; }
+.seg-motion::before {
+  content: '';
+  position: absolute;
+  top: 2px; left: 0;
+  width: var(--seg-width, 0px); height: var(--seg-height, 22px);
+  transform: translateX(var(--seg-x, 2px));
+  transform-origin: center;
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(20,23,28,.1), inset 0 1px rgba(255,255,255,.35);
+  pointer-events: none;
+  z-index: -1;
+}
+.seg-motion.seg-ready::before {
+  transition: transform var(--motion-panel) var(--ease), width var(--motion-state) var(--ease),
+    background-color var(--motion-state) var(--ease);
+}
+.seg-motion button.is-on { background: transparent; box-shadow: none; }
+
+:is(.btn, .icon-btn, .chip, .modal-x, .seg button, .star) {
+  transform-origin: center;
+  transition: transform var(--motion-fast) var(--ease),
+    background-color var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+:is(.btn, .icon-btn, .chip, .modal-x, .seg button, .star):active:not(:disabled) { transform: scale(.95); }
+.star.is-on svg { transition: fill var(--motion-fast) var(--ease), stroke var(--motion-fast) var(--ease); }
+.switch input::after { transition-duration: var(--motion-state); }
+.search-results { animation: menu-enter var(--motion-state) var(--ease); transform-origin: top center; }
+.sr-item { transition: background-color var(--motion-fast) var(--ease); }
+.sr-loading { display: flex; align-items: center; justify-content: center; gap: 8px; }
+@keyframes menu-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.dt-loading-label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin: 18px 0; }
+.dt-loading-body { display: flex; flex-direction: column; gap: 16px; }
+.dt-loading-facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.dt-error-actions { display: flex; gap: 8px; margin-top: 8px; }
+.modal, .toast { animation: none; }
+.modal.is-closing { pointer-events: none; }
+.modal-card { transform-origin: center; }
+.modal-card, .search-results {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+:is(.detail, .topbar, .ribbon, .chart-card, .pos-card, .hold-card) {
+  transition: background-color var(--motion-state) var(--ease), border-color var(--motion-state) var(--ease);
+}
+@media (max-width: 1020px) {
+  .detail {
+    visibility: hidden;
+    transition: transform var(--motion-panel) var(--ease), visibility 0s var(--motion-panel),
+      background-color var(--motion-state) var(--ease);
+  }
+  .detail.is-open { visibility: visible; transition-delay: 0s; }
+}
+@media (max-width: 480px) {
+  .grid col.col-nav { display: none; }
+  .board-tools { gap: 6px; }
+  .seg button { padding-left: 5px; padding-right: 5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .load-status, .search-results, :is(.btn, .icon-btn, .chip, .modal-x, .seg button, .star):active:not(:disabled) { transform: none; }
+  .grid tr.is-loading td.c-num::after, .sk { animation: none; background: var(--surface-3); }
+  .load-orbit { animation: none; }
+  .detail { transition-delay: 0s; }
+}

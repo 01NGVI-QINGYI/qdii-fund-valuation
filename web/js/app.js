@@ -4,7 +4,8 @@ import { $, toast, setText, h, clear } from './dom.js';
 import { api } from './api.js';
 import * as store from './store.js';
 import { renderBoard, clearBoard } from './views/board.js';
-import { renderDetail, renderPlaceholder, openDrawer, closeDrawer } from './views/detail.js';
+import { renderDetail, renderPlaceholder, renderDetailLoading, renderDetailError, openDrawer, closeDrawer } from './views/detail.js';
+import { createSegmentMotion, showModal, hideModal, prefersReducedMotion } from './motion.js';
 import { renderRibbon, startClock, beijingMinutesToLocal } from './views/ribbon.js';
 import { createSearch } from './views/search.js';
 import { createPicker } from './views/picker.js';
@@ -33,6 +34,7 @@ const state = {
   lastUpdated: null,
   timer: null,
   error: null,
+  loadingCodes: new Set(),
 };
 
 const el = {
@@ -48,6 +50,26 @@ const el = {
 /** 选基面板实例（init 里创建，供星标回调刷新）。 */
 let picker = null;
 let refreshRun = 0;
+let detailRun = 0;
+let loadStatusTimer;
+
+function paintLoading({ active, done = 0, total = 0, failed = 0 } = {}) {
+  const box = $('#load-status');
+  clearTimeout(loadStatusTimer);
+  el.refresh.classList.toggle('is-busy', !!active);
+  el.refresh.setAttribute('aria-busy', String(!!active));
+  el.refresh.setAttribute('aria-label', active ? '正在刷新估值' : '刷新');
+  $('#grid').setAttribute('aria-busy', String(!!active));
+  box.classList.toggle('is-active', !!total);
+  box.classList.toggle('is-complete', !active);
+  setText($('#load-label'), active ? '正在更新估值' : failed ? `已更新 · ${failed} 只暂未获取` : '估值已更新');
+  setText($('#load-count'), total ? `${done} / ${total}` : '');
+  const progress = $('#load-progress');
+  progress.setAttribute('aria-valuemax', String(Math.max(total, 1)));
+  progress.setAttribute('aria-valuenow', String(done));
+  progress.style.setProperty('--load-progress', total ? done / total : 0);
+  if (!active) loadStatusTimer = setTimeout(() => box.classList.remove('is-active'), 1600);
+}
 
 /* ── 主题 ───────────────────────────────────────────────────────────── */
 
@@ -87,7 +109,7 @@ function sortedFunds(funds) {
   return list;
 }
 
-function paintBoard() {
+function paintBoard({ animateOrder = false } = {}) {
   const watch = store.loadWatch();
   const order = new Map(watch.map((w, i) => [w.code, i]));
   if (store.getPrefs().sort === 'weight') {
@@ -107,6 +129,8 @@ function paintBoard() {
     selected: state.selected,
     showPnl,
     positions,
+    animateOrder,
+    loadingCodes: state.loadingCodes,
     onSelect: selectFund,
     onRemove: (code) => {
       store.removeFromWatch(code);
@@ -227,7 +251,10 @@ async function refresh({ silent = false, restart = false } = {}) {
   const codes = watch.map((w) => w.code);
 
   state.loading = true;
-  el.refresh.classList.add('is-busy');
+  state.error = null;
+  state.loadingCodes = new Set(codes);
+  paintLoading({ active: true, total: codes.length });
+  paintBoard();
   const showingCache = state.funds.some((f) => f._cached && f.estimate);
   if (!silent || showingCache || !state.funds.some((f) => f.estimate)) {
     const prefix = showingCache ? '显示上次数据 · ' : '';
@@ -263,6 +290,7 @@ async function refresh({ silent = false, restart = false } = {}) {
       }
       if (run !== refreshRun) return;
       for (const fund of data.funds || []) loaded.set(fund.code, fund);
+      for (const code of batch) state.loadingCodes.delete(code);
       errors.push(...(data.errors || []));
       if (data.markets) state.markets = data.markets;
       loadedCount += batch.length;
@@ -270,10 +298,12 @@ async function refresh({ silent = false, restart = false } = {}) {
       // 始终按自选顺序合并；尚未完成的基金保留启动时的名称占位行。
       state.funds = watch.map((w) => loaded.get(w.code) || { code: w.code, name: w.name || w.code });
       paintBoard();
+      paintLoading({ active: true, done: loadedCount, total: codes.length });
       setText(el.foot, `正在加载估值… ${Math.min(loadedCount, codes.length)}/${codes.length}`, null);
     }
 
     const overview = await overviewPromise;
+    if (run !== refreshRun) return;
     const data = { funds: [...loaded.values()], errors, markets: state.markets };
     if (overview?.markets) state.markets = overview.markets;
 
@@ -304,31 +334,39 @@ async function refresh({ silent = false, restart = false } = {}) {
     if (state.selected && data.funds.some((f) => f.code === state.selected)) {
       await loadDetail(state.selected, { silent: true });
     }
+    if (run !== refreshRun) return;
 
     const bits = [`更新于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`];
     bits.push(`${data.funds.length} 只基金`);
     if (state.error?.length) bits.push(`${state.error.length} 只失败`);
     setText(el.foot, bits.join(' · '), null);
   } catch (err) {
+    if (run !== refreshRun) return;
+    state.error = codes.map((code) => ({ code, message: err.message }));
     setText(el.foot, `获取失败：${err.message}`, null);
     if (!silent) toast(`获取失败：${err.message}`);
   } finally {
     if (run === refreshRun) {
       state.loading = false;
-      el.refresh.classList.remove('is-busy');
+      state.loadingCodes.clear();
+      paintLoading({ total: codes.length, done: codes.length, failed: state.error?.length || 0 });
+      paintBoard();
     }
   }
 }
 
 async function loadDetail(code, { silent = false } = {}) {
+  const run = ++detailRun;
   const prefs = store.getPrefs();
   if (!silent) {
-    clear(el.detail);
-    el.detail.appendChild(h('div', { class: 'dt-placeholder' }, h('p', {}, '加载中…')));
+    const fund = state.funds.find((item) => item.code === code) || { code };
+    renderDetailLoading(el.detail, fund, closeDetail);
+    el.detail.scrollTop = 0;
+    if (window.matchMedia('(max-width: 1020px)').matches) openDrawer(el.detail);
   }
   try {
     const data = await api.fund(code, { top: prefs.top, fx: prefs.fx });
-    if (state.selected !== code) return;
+    if (state.selected !== code || run !== detailRun) return;
     state.detail = data;
     renderDetail(el.detail, data, {
       onClose: closeDetail,
@@ -337,9 +375,11 @@ async function loadDetail(code, { silent = false } = {}) {
     });
     if (window.matchMedia('(max-width: 1020px)').matches) openDrawer(el.detail);
   } catch (err) {
+    if (state.selected !== code || run !== detailRun) return;
     if (!silent) {
-      clear(el.detail);
-      el.detail.appendChild(h('div', { class: 'dt-placeholder' }, h('p', {}, err.message)));
+      renderDetailError(el.detail, err.message, {
+        onRetry: () => loadDetail(code), onClose: closeDetail,
+      });
     }
   }
 }
@@ -354,9 +394,15 @@ function selectFund(code, { push = true } = {}) {
 }
 
 function closeDetail() {
+  ++detailRun;
+  const previousCode = state.selected;
   state.selected = null;
   closeDrawer(el.detail);
-  renderPlaceholder(el.detail);
+  const mobile = window.matchMedia('(max-width: 1020px)').matches;
+  if (mobile) {
+    setTimeout(() => { if (!state.selected) renderPlaceholder(el.detail); }, prefersReducedMotion() ? 0 : 280);
+    el.gridBody.querySelector(`tr[data-code="${previousCode}"]`)?.focus({ preventScroll: true });
+  } else renderPlaceholder(el.detail);
   paintBoard();
   history.replaceState(null, '', location.pathname + location.search);
 }
@@ -384,6 +430,10 @@ function applyHash() {
 function syncWatchList() {
   const watch = store.loadWatch();
   if (!watch.length) {
+    ++refreshRun;
+    state.loading = false;
+    state.loadingCodes.clear();
+    paintLoading();
     clearBoard(el.gridBody);
     state.funds = [];
     renderEmptyChips();
@@ -459,6 +509,7 @@ function exportCsv() {
 
 function bindKeys(search) {
   document.addEventListener('keydown', (ev) => {
+    if (document.querySelector('.modal:not([hidden])')) return;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
 
     if (ev.key === '/' && !typing) {
@@ -492,7 +543,7 @@ function moveSelection(delta) {
   const next = i < 0 ? (delta > 0 ? 0 : funds.length - 1) : Math.min(Math.max(i + delta, 0), funds.length - 1);
   selectFund(funds[next].code);
   const row = el.gridBody.querySelector(`tr[data-code="${funds[next].code}"]`);
-  row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  row?.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'instant' : 'smooth' });
 }
 
 /* ── 启动 ───────────────────────────────────────────────────────────── */
@@ -505,17 +556,17 @@ function bindControls() {
   });
 
   const about = $('#about');
-  $('#btn-about').addEventListener('click', () => { about.hidden = false; });
-  $('#about-close').addEventListener('click', () => { about.hidden = true; });
-  about.addEventListener('click', (ev) => { if (ev.target === about) about.hidden = true; });
+  $('#btn-about').addEventListener('click', () => showModal(about));
+  $('#about-close').addEventListener('click', () => hideModal(about));
+  about.addEventListener('click', (ev) => { if (ev.target === about) hideModal(about); });
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !about.hidden) about.hidden = true;
+    if (ev.key === 'Escape' && !about.hidden) hideModal(about);
   });
 
   const fxToggle = $('#toggle-fx');
   fxToggle.addEventListener('change', () => {
     store.setPref('fx', fxToggle.checked);
-    refresh({ silent: true });
+    refresh({ silent: true, restart: true });
     if (state.selected) loadDetail(state.selected, { silent: true });
   });
 
@@ -526,12 +577,14 @@ function bindControls() {
     toast(Number(intervalSel.value) ? `每 ${intervalSel.value} 秒自动刷新` : '已关闭自动刷新');
   });
 
+  const updateSegment = createSegmentMotion($('#sort-seg'));
   $('#sort-seg').addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-sort]');
-    if (!btn) return;
+    if (!btn || btn.classList.contains('is-on')) return;
     store.setPref('sort', btn.dataset.sort);
-    for (const b of $('#sort-seg').children) b.classList.toggle('is-on', b === btn);
-    paintBoard();
+    for (const b of $('#sort-seg').querySelectorAll('button')) b.classList.toggle('is-on', b === btn);
+    updateSegment(btn);
+    paintBoard({ animateOrder: true });
   });
 
   $('#btn-export').addEventListener('click', exportCsv);
@@ -567,6 +620,10 @@ function init() {
   bindKeys(search);
 
   renderPlaceholder(el.detail);
+  const mobile = window.matchMedia('(max-width: 1020px)');
+  const syncDetailAccess = () => { el.detail.inert = mobile.matches && !el.detail.classList.contains('is-open'); };
+  mobile.addEventListener('change', syncDetailAccess);
+  syncDetailAccess();
   startClock();
   syncWatchList();
   startTimer();

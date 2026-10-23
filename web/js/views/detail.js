@@ -4,6 +4,7 @@ import { h, s, clear, setText, setClass, toast } from '../dom.js';
 import { lineChart } from '../chart.js';
 import * as fmt from '../format.js';
 import { getPosition, setPosition, removePosition, derivePosition } from '../store.js';
+import { reveal } from '../motion.js';
 
 let built = null; // { code, refs }
 
@@ -492,6 +493,7 @@ function updateFoot(refs, fund) {
 
 export function renderPlaceholder(root) {
   built = null;
+  root.setAttribute('aria-busy', 'false');
   clear(root);
   root.appendChild(h('div', { class: 'dt-placeholder' }, [
     s('svg', { viewBox: '0 0 40 40' }, [
@@ -502,7 +504,50 @@ export function renderPlaceholder(root) {
   ]));
 }
 
+/** 保留基金身份和关闭按钮，详情请求期间也可立即返回。 */
+export function renderDetailLoading(root, fund, onClose) {
+  built = null;
+  clear(root);
+  root.setAttribute('aria-busy', 'true');
+  const skeleton = (width, height = '12px') => h('div', {
+    class: 'sk', style: { width, height }, 'aria-hidden': 'true',
+  });
+  root.append(
+    h('div', { class: 'dt-head' }, [
+      h('div', { class: 'dt-title-row' }, [
+        h('h2', { class: 'dt-name' }, fund.name || fund.code),
+        h('button', { class: 'icon-btn dt-close', 'aria-label': '关闭详情', onclick: onClose }, '×'),
+      ]),
+      h('div', { class: 'dt-meta num' }, fund.code),
+    ]),
+    h('div', { class: 'dt-loading-label', role: 'status' }, [
+      h('span', { class: 'load-orbit', 'aria-hidden': 'true' }), '正在加载净值与持仓…',
+    ]),
+    h('div', { class: 'dt-loading-body', 'aria-hidden': 'true' }, [
+      skeleton('48%', '36px'), skeleton('76%'),
+      h('div', { class: 'dt-loading-facts' }, Array.from({ length: 4 }, () => skeleton('100%', '48px'))),
+      skeleton('100%', '100px'), skeleton('100%', '115px'),
+      ...Array.from({ length: 5 }, () => skeleton('100%', '20px')),
+    ]),
+  );
+  reveal(root.querySelector('.dt-loading-body'));
+}
+
+export function renderDetailError(root, message, { onRetry, onClose }) {
+  built = null;
+  root.setAttribute('aria-busy', 'false');
+  clear(root);
+  root.appendChild(h('div', { class: 'dt-placeholder', role: 'status' }, [
+    h('p', {}, message),
+    h('div', { class: 'dt-error-actions' }, [
+      h('button', { class: 'btn btn-primary', onclick: onRetry }, '重试'),
+      h('button', { class: 'btn btn-ghost', onclick: onClose }, '返回自选'),
+    ]),
+  ]));
+}
+
 export function renderDetail(root, payload, handlers) {
+  root.setAttribute('aria-busy', 'false');
   const fund = payload.fund;
   if (!fund) {
     clear(root);
@@ -513,6 +558,9 @@ export function renderDetail(root, payload, handlers) {
 
   if (!built || built.code !== fund.code) {
     built = build(root, fund, handlers);
+    for (const [index, child] of [...root.children].entries()) {
+      reveal(child, { duration: 260, delay: Math.min(index * 18, 90), fill: 'backwards' });
+    }
   }
   const refs = built.refs;
   const e = fund.estimate;
@@ -596,8 +644,10 @@ export function renderDetail(root, payload, handlers) {
 }
 
 export function openDrawer(root) {
+  root.inert = false;
   root.classList.add('is-open');
 }
 export function closeDrawer(root) {
   root.classList.remove('is-open');
+  root.inert = window.matchMedia('(max-width: 1020px)').matches;
 }

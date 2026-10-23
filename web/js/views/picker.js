@@ -3,6 +3,7 @@
 import { h, s, clear, setText, setClass, toast } from '../dom.js';
 import { FUND_CATALOG, CATALOG_FIXES } from '../catalog.js';
 import { inWatch, addToWatch, removeFromWatch, resetWatch } from '../store.js';
+import { showModal, hideModal } from '../motion.js';
 
 function starButton(code, name, onToggle) {
   const btn = h('button', {
@@ -96,10 +97,9 @@ export function createPicker({ onChanged }) {
     searchEl.value = '';
     render();
     renderFixNote();
-    modal.hidden = false;
-    searchEl.focus();
+    showModal(modal, searchEl);
   };
-  const close = () => { modal.hidden = true; };
+  const close = () => hideModal(modal);
 
   searchEl.addEventListener('input', () => {
     filter = searchEl.value;

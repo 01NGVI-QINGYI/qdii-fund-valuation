@@ -1,4 +1,5 @@
 /** 极简 DOM 构建与局部更新工具。 */
+import { playMotion } from './motion.js';
 
 /**
  * 创建元素。
@@ -83,14 +84,21 @@ export function setClass(el, name, on) {
 }
 
 let toastTimer = null;
+let toastRun = 0;
 export function toast(message, ms = 2000) {
   const box = $('#toast');
   if (!box) return;
   box.textContent = message;
   box.hidden = false;
+  const run = ++toastRun;
+  playMotion(box, [
+    { opacity: 0, transform: 'translate(-50%, 7px)' },
+    { opacity: 1, transform: 'translate(-50%, 0)' },
+  ], { duration: 200 });
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    box.hidden = true;
+  toastTimer = setTimeout(async () => {
+    await playMotion(box, [{ opacity: 1 }, { opacity: 0 }], { duration: 160 });
+    if (run === toastRun) box.hidden = true;
   }, ms);
 }
 
